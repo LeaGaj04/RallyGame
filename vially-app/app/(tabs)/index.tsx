@@ -17,22 +17,34 @@ export default function Home() {
   const glowAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  /* ✨ PARTICULAS */
-  const particles = useRef(
-    [...Array(20)].map(() => new Animated.Value(0))
-  ).current;
+  /* 🟣 HOVER BUTTON */
+  const buttonScale = useRef(new Animated.Value(1)).current;
 
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  /* ✨ PARTICULAS PRO */
+  const particles = useRef(
+    [...Array(40)].map(() => ({
+      opacity: new Animated.Value(Math.random()),
+      scale: new Animated.Value(Math.random() * 1 + 0.5),
+      driftX: new Animated.Value(0),
+      driftY: new Animated.Value(0),
+      x: Math.random() * 350,
+      y: Math.random() * 700,
+      color: ["#FF00C8", "#00E5FF", "#A100FF"][Math.floor(Math.random() * 3)],
+      size: Math.random() * 3 + 2,
+    }))
+  ).current;
+
   useEffect(() => {
-    // Fade in
+    /* FADE */
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1200,
       useNativeDriver: true,
     }).start();
 
-    // Glow loop
+    /* GLOW */
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, {
@@ -48,22 +60,73 @@ export default function Home() {
       ])
     ).start();
 
-    // Partículas
-    particles.forEach((anim, i) => {
+    /* PARTICULAS */
+    particles.forEach((p) => {
       Animated.loop(
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 3000 + i * 200,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
+        Animated.sequence([
+          Animated.timing(p.opacity, {
+            toValue: 0.1,
+            duration: 800 + Math.random() * 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.opacity, {
+            toValue: 1,
+            duration: 800 + Math.random() * 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(p.scale, {
+            toValue: 1.5,
+            duration: 1200 + Math.random() * 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.scale, {
+            toValue: 0.6,
+            duration: 1200 + Math.random() * 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(p.driftX, {
+            toValue: Math.random() * 20 - 10,
+            duration: 2000 + Math.random() * 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.driftX, {
+            toValue: 0,
+            duration: 2000 + Math.random() * 2000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(p.driftY, {
+            toValue: Math.random() * 20 - 10,
+            duration: 2000 + Math.random() * 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.driftY, {
+            toValue: 0,
+            duration: 2000 + Math.random() * 2000,
+            useNativeDriver: true,
+          }),
+        ])
       ).start();
     });
   }, []);
 
   /* 🚀 TRANSICIÓN */
   const handleStart = () => {
-    if (isTransitioning) return; // 🚫 evita doble click
+    if (isTransitioning) return;
 
     setIsTransitioning(true);
 
@@ -79,38 +142,63 @@ export default function Home() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      router.replace("/levels"); // 🔥 mejor que push
+      router.replace("/levels");
     });
   };
 
+  /* 🟣 HOVER */
+  const handleHoverIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1.1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleHoverOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  /* 🔥 GLOW DINÁMICO */
   const glow = glowAnim.interpolate({
     inputRange: [0, 1],
+    outputRange: [5, 25],
+  });
+
+  const glowHover = buttonScale.interpolate({
+    inputRange: [1, 1.1],
     outputRange: [5, 25],
   });
 
   return (
     <View style={styles.container}>
 
-      {/* ✨ PARTICULAS */}
-      {particles.map((anim, i) => {
-        const translateY = anim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -600],
-        });
-
-        return (
-          <Animated.View
-            key={i}
-            style={[
-              styles.particle,
-              {
-                left: Math.random() * 300,
-                transform: [{ translateY }],
-              },
-            ]}
-          />
-        );
-      })}
+      {/* PARTICULAS */}
+      {particles.map((p, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: "absolute",
+            width: p.size,
+            height: p.size,
+            borderRadius: 10,
+            backgroundColor: p.color,
+            left: p.x,
+            top: p.y,
+            opacity: p.opacity,
+            transform: [
+              { translateX: p.driftX },
+              { translateY: p.driftY },
+              { scale: p.scale },
+            ],
+            shadowColor: p.color,
+            shadowRadius: 10,
+            shadowOpacity: 1,
+          }}
+        />
+      ))}
 
       {/* CONTENIDO */}
       <Animated.View
@@ -120,13 +208,10 @@ export default function Home() {
           alignItems: "center",
         }}
       >
-        {/* 🔥 LOGO */}
         <Animated.Text
           style={[
             styles.title,
-            {
-              textShadowRadius: glow,
-            },
+            { textShadowRadius: glow },
           ]}
         >
           NEON DRIVE
@@ -134,24 +219,41 @@ export default function Home() {
 
         <Text style={styles.subtitle}>ROAD SAFETY ACADEMY</Text>
 
-        {/* 🚗 */}
         <Text style={styles.car}>🏎️</Text>
 
-        {/* 📝 */}
         <Text style={styles.description}>
           Learn road safety through{"\n"}neon-lit cyberpunk streets
         </Text>
 
         <View style={styles.separator} />
 
-        {/* ▶️ BOTÓN */}
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleStart}
-          activeOpacity={0.8}
+        {/* BOTÓN PRO */}
+        <Animated.View
+          style={{
+            transform: [{ scale: buttonScale }],
+          }}
         >
-          <Text style={styles.buttonText}>START GAME</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              isTransitioning && { opacity: 0.5 }
+            ]}
+            onPress={handleStart}
+            onHoverIn={handleHoverIn}
+            onHoverOut={handleHoverOut}
+            disabled={isTransitioning}
+            activeOpacity={0.8}
+          >
+            <Animated.Text
+              style={[
+                styles.buttonText,
+                { textShadowRadius: glowHover }
+              ]}
+            >
+              START GAME
+            </Animated.Text>
+          </TouchableOpacity>
+        </Animated.View>
 
         <Text style={styles.features}>
           Pedestrians   |   Signals   |   Traffic
@@ -165,7 +267,7 @@ export default function Home() {
   );
 }
 
-/* 🎨 ESTILOS */
+/* 🎨 */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -217,6 +319,7 @@ const styles = StyleSheet.create({
     color: "#FF00C8",
     fontWeight: "bold",
     letterSpacing: 2,
+    textShadowColor: "#FF00C8",
   },
 
   features: {
@@ -229,16 +332,5 @@ const styles = StyleSheet.create({
     color: "#444",
     marginTop: 10,
     fontSize: 10,
-  },
-
-  /* ✨ PARTICULAS */
-  particle: {
-    position: "absolute",
-    width: 4,
-    height: 4,
-    backgroundColor: "#FF00C8",
-    borderRadius: 2,
-    bottom: 0,
-    opacity: 0.6,
   },
 });
