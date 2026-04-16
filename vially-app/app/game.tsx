@@ -4,40 +4,88 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Easing,
-  PanResponder
+  Easing
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 
-const question = {
-  text: "Te aproximas a una señal PARE. ¿Qué haces?",
-  options: [
-    "Disminuir y seguir",
-    "Detenerte completamente",
-    "Acelerar"
-  ],
-  correct: 1,
-};
+const LANES = [-100, 0, 100];
 
 export default function Game() {
   const router = useRouter();
+
+  /* 🎮 GAME STATE */
+  const [score, setScore] = useState(0);
+  const [hp, setHp] = useState(100);
+  const [speed, setSpeed] = useState(60);
 
   /* ⏱ TIMER */
   const [time, setTime] = useState(10);
 
   useEffect(() => {
-    if (time === 0) {
-      handleFail();
-      return;
-    }
-
     const interval = setInterval(() => {
       setTime((t) => t - 1);
+      setScore((s) => s + 10);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [time]);
+  }, []);
+
+  /* 🚗 AUTO */
+  const [lane, setLane] = useState(1);
+  const carX = useRef(new Animated.Value(LANES[1])).current;
+
+  const moveLane = (dir: number) => {
+    let newLane = lane + dir;
+    if (newLane < 0) newLane = 0;
+    if (newLane > 2) newLane = 2;
+
+    setLane(newLane);
+
+    Animated.spring(carX, {
+      toValue: LANES[newLane],
+      useNativeDriver: true,
+    }).start();
+  };
+
+  /* 🚧 ENEMIGO */
+  const enemyY = useRef(new Animated.Value(-200)).current;
+  const [enemyLane, setEnemyLane] = useState(1);
+
+  const spawnEnemy = () => {
+    const randomLane = Math.floor(Math.random() * 3);
+    setEnemyLane(randomLane);
+
+    enemyY.setValue(-200);
+
+    Animated.timing(enemyY, {
+      toValue: 600,
+      duration: 2000,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start(() => spawnEnemy());
+  };
+
+  useEffect(() => {
+    spawnEnemy();
+  }, []);
+
+  /* 💥 COLISIÓN */
+  useEffect(() => {
+    const listener = enemyY.addListener(({ value }) => {
+      if (value > 350 && value < 450) {
+        if (enemyLane === lane) {
+          setHp((prev) => prev - 20);
+
+          if (hp <= 20) {
+            router.push("/result?success=false&stars=0");
+          }
+        }
+      }
+    });
+
+    return () => enemyY.removeListener(listener);
+  }, [lane, enemyLane, hp]);
 
   /* 🛣️ CARRETERA */
   const roadAnim = useRef(new Animated.Value(0)).current;
@@ -46,7 +94,7 @@ export default function Game() {
     Animated.loop(
       Animated.timing(roadAnim, {
         toValue: 1,
-        duration: 2000,
+        duration: 1500,
         easing: Easing.linear,
         useNativeDriver: true,
       })
@@ -55,268 +103,219 @@ export default function Game() {
 
   const translateY = roadAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 200],
+    outputRange: [0, 300],
   });
 
-  /* 🚗 AUTO */
-  const carX = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gesture) => {
-        let newX = gesture.dx;
-        if (newX > 120) newX = 120;
-        if (newX < -120) newX = -120;
-        carX.setValue(newX);
-      },
-    })
-  ).current;
-
-  /* 🚨 EFECTO FALLO */
-  const flash = useRef(new Animated.Value(0)).current;
-  const shake = useRef(new Animated.Value(0)).current;
-
-  const triggerFailAnimation = () => {
-    // 🔴 Flash rojo
-    Animated.sequence([
-      Animated.timing(flash, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flash, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // 💥 Shake pantalla
-    Animated.sequence([
-      Animated.timing(shake, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: -10, duration: 50, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 6, duration: 50, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start();
-  };
-
-  /* ⭐ SISTEMA DE ESTRELLAS */
-  const calculateStars = () => {
-    if (time >= 7) return 3;
-    if (time >= 4) return 2;
-    return 1;
-  };
-
-  /* ❌ FALLO */
-  const handleFail = () => {
-    triggerFailAnimation();
-
-    setTimeout(() => {
-      router.push("/result?success=false&stars=0");
-    }, 500);
-  };
-
-  /* ✅ RESPUESTA */
-  const handleAnswer = (index: number) => {
-    if (index === question.correct) {
-      const stars = calculateStars();
-      router.push(`/result?success=true&stars=${stars}`);
-    } else {
-      handleFail();
-    }
-  };
-
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        { transform: [{ translateX: shake }] }
-      ]}
-    >
-
-      {/* 🌆 FONDO */}
-      <View style={styles.background} />
+    <View style={styles.container}>
 
       {/* 🛣️ CARRETERA */}
-      <Animated.View style={[styles.road, { transform: [{ translateY }] }]}>
-        <View style={styles.laneContainer}>
-          {[...Array(10)].map((_, i) => (
-            <View key={i} style={styles.laneLine} />
-          ))}
-        </View>
-      </Animated.View>
-
+      <Animated.View style={[styles.road, { transform: [{ translateY }] }]} />
       <Animated.View
         style={[
           styles.road,
-          { transform: [{ translateY: Animated.add(translateY, -200) }] }
-        ]}
-      >
-        <View style={styles.laneContainer}>
-          {[...Array(10)].map((_, i) => (
-            <View key={i} style={styles.laneLine} />
-          ))}
-        </View>
-      </Animated.View>
-
-      {/* 🚨 FLASH ROJO */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: "red",
-            opacity: flash,
-          },
+          { transform: [{ translateY: Animated.add(translateY, -300) }] }
         ]}
       />
 
-      {/* 📊 HUD */}
-      <View style={styles.hud}>
-        <Text style={styles.hudText}>🚗 40 km/h</Text>
-        <Text style={styles.hudText}>⚡ 150 XP</Text>
-        <Text style={styles.hudText}>⚠️ 5 multas</Text>
+      {/* LÍNEAS */}
+      <View style={styles.lanes}>
+        <View style={styles.line} />
+        <View style={styles.line} />
       </View>
+
+      {/* 🚧 ENEMIGO */}
+      <Animated.View
+        style={[
+          styles.enemy,
+          {
+            transform: [
+              { translateY: enemyY },
+              { translateX: LANES[enemyLane] }
+            ],
+          },
+        ]}
+      >
+        <Text style={{ fontSize: 20 }}>🚙</Text>
+      </Animated.View>
 
       {/* 🚗 AUTO */}
       <Animated.View
-        {...panResponder.panHandlers}
         style={[
           styles.car,
           { transform: [{ translateX: carX }] }
         ]}
       >
-        <Text style={{ color: "#fff", fontSize: 20 }}>🚘</Text>
+        <Text style={{ fontSize: 22 }}>🚗</Text>
       </Animated.View>
 
-      {/* ⏱ TIMER */}
-      <View style={styles.timerContainer}>
-        <View style={[styles.timerBar, { width: `${time * 10}%` }]} />
-        <Text style={styles.timerText}>{time}s</Text>
+      {/* 🎮 UI NEON SUPERIOR */}
+      <View style={styles.topUI}>
+
+        {/* PAUSE */}
+        <View style={styles.neonBoxPink}>
+          <Text style={styles.neonTextPink}>⏸ PAUSE</Text>
+        </View>
+
+        {/* SCORE */}
+        <Text style={styles.score}>{score}</Text>
+
       </View>
 
-      {/* ❓ PREGUNTA */}
-      <View style={styles.questionBox}>
-        <Text style={styles.question}>{question.text}</Text>
-
-        {question.options.map((opt, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.option}
-            onPress={() => handleAnswer(i)}
-          >
-            <Text style={styles.optionText}>{opt}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* ❤️ HP BAR */}
+      <View style={styles.hpContainer}>
+        <View style={[styles.hpBar, { width: `${hp}%` }]} />
       </View>
-    </Animated.View>
+
+      {/* 🎮 CONTROLES */}
+      <View style={styles.controls}>
+        <TouchableOpacity style={styles.btn} onPress={() => moveLane(-1)}>
+          <Text style={styles.btnText}>◀</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.btn} onPress={() => moveLane(1)}>
+          <Text style={styles.btnText}>▶</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 🟣 SPEED */}
+      <View style={styles.speedCircle}>
+        <Text style={styles.speedText}>{speed}</Text>
+        <Text style={{ color: "#FF00C8" }}>KM/H</Text>
+      </View>
+
+      {/* 🛑 BRAKE */}
+      <TouchableOpacity style={styles.brake}>
+        <Text style={styles.brakeText}>BRAKE</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
-/* 🎨 ESTILOS */
+/* 🎨 ESTILOS NEON */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0D0221",
-  },
-
-  background: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#140033",
+    alignItems: "center",
   },
 
   road: {
     position: "absolute",
-    width: "100%",
-    height: 400,
-    bottom: 0,
-    backgroundColor: "#140033",
-    borderTopWidth: 2,
-    borderTopColor: "#FF00C8",
+    width: 250,
+    height: 300,
+    backgroundColor: "#1F1147",
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderColor: "#FF00C8",
   },
 
-  laneContainer: {
-    alignItems: "center",
-    justifyContent: "space-around",
-    height: "100%",
-  },
-
-  laneLine: {
-    width: 6,
-    height: 40,
-    backgroundColor: "#FFD700",
-    marginVertical: 10,
-    borderRadius: 3,
-  },
-
-  hud: {
+  lanes: {
     position: "absolute",
-    top: 50,
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-around",
+    width: 250,
+    height: "100%",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
-  hudText: {
-    color: "#00E5FF",
-    fontWeight: "bold",
+  line: {
+    width: 4,
+    height: 100,
+    backgroundColor: "#fff",
+    opacity: 0.3,
   },
 
   car: {
     position: "absolute",
-    bottom: 220,
-    alignSelf: "center",
-    backgroundColor: "#A100FF",
-    padding: 12,
-    borderRadius: 12,
+    bottom: 200,
   },
 
-  timerContainer: {
+  enemy: {
     position: "absolute",
-    bottom: 160,
+  },
+
+  /* UI */
+  topUI: {
+    position: "absolute",
+    top: 60,
     width: "90%",
-    alignSelf: "center",
-    height: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  neonBoxPink: {
+    borderWidth: 2,
+    borderColor: "#FF00C8",
+    padding: 8,
+  },
+
+  neonTextPink: {
+    color: "#FF00C8",
+    fontWeight: "bold",
+  },
+
+  score: {
+    color: "#FFD700",
+    fontSize: 18,
+  },
+
+  hpContainer: {
+    position: "absolute",
+    top: 100,
+    width: "80%",
+    height: 6,
     backgroundColor: "#222",
-    borderRadius: 10,
-    overflow: "hidden",
   },
 
-  timerBar: {
+  hpBar: {
     height: "100%",
-    backgroundColor: "#00E5FF",
+    backgroundColor: "#00FF00",
   },
 
-  timerText: {
+  controls: {
     position: "absolute",
-    alignSelf: "center",
-    color: "#fff",
+    bottom: 100,
+    flexDirection: "row",
+    gap: 20,
   },
 
-  questionBox: {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-    backgroundColor: "#1F1147",
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-
-  question: {
-    color: "#fff",
-    marginBottom: 15,
-  },
-
-  option: {
+  btn: {
     backgroundColor: "#A100FF",
-    padding: 15,
+    padding: 20,
     borderRadius: 10,
-    marginBottom: 10,
   },
 
-  optionText: {
+  btnText: {
     color: "#fff",
+    fontSize: 18,
+  },
+
+  speedCircle: {
+    position: "absolute",
+    right: 20,
+    bottom: 180,
+    borderWidth: 2,
+    borderColor: "#FF00C8",
+    borderRadius: 50,
+    padding: 20,
+    alignItems: "center",
+  },
+
+  speedText: {
+    color: "#fff",
+    fontSize: 18,
+  },
+
+  brake: {
+    position: "absolute",
+    right: 20,
+    bottom: 100,
+    borderWidth: 2,
+    borderColor: "#FF00C8",
+    padding: 10,
+  },
+
+  brakeText: {
+    color: "#FF00C8",
   },
 });
