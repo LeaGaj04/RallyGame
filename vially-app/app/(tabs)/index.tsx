@@ -63,6 +63,8 @@ export default function Home() {
 
   /* 🚀 TRANSICIÓN */
   const handleStart = () => {
+    if (isTransitioning) return; // 🚫 evita doble click
+
     setIsTransitioning(true);
 
     Animated.sequence([
@@ -77,7 +79,7 @@ export default function Home() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      router.push("/levels");
+      router.replace("/levels"); // 🔥 mejor que push
     });
   };
 

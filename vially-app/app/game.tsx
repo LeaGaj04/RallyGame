@@ -6,13 +6,38 @@ import {
   Animated,
   Easing
 } from "react-native";
-import { useRouter } from "expo-router";
-import { useEffect, useState, useRef } from "react";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 
 const LANES = [-100, 0, 100];
 
 export default function Game() {
   const router = useRouter();
+  const { level } = useLocalSearchParams();
+  const levelId = Number(level ?? 1);
+
+  /* ⏱ TIMER */
+  const [time, setTime] = useState(10);
+
+  useEffect(() => {
+    if (time <= 0) {
+      handleFail();
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTime((t) => t - 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [time]);
+
+  /* ⭐ CALCULO */
+  const calculateStars = () => {
+    if (time >= 7) return 3;
+    if (time >= 4) return 2;
+    return 1;
+  };
 
   /* 🚗 AUTO */
   const [lane, setLane] = useState(1);
@@ -31,26 +56,7 @@ export default function Game() {
     }).start();
   };
 
-  /* 🛣️ CARRETERA */
-  const roadAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(roadAnim, {
-        toValue: 1,
-        duration: 1500,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, []);
-
-  const translateY = roadAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 300],
-  });
-
-  /* 🚧 ENEMIGO AUTO */
+  /* 🚧 AUTO ENEMIGO */
   const enemyY = useRef(new Animated.Value(-200)).current;
   const [enemyLane, setEnemyLane] = useState(1);
 
@@ -67,10 +73,6 @@ export default function Game() {
       useNativeDriver: true,
     }).start(() => spawnEnemy());
   };
-
-  useEffect(() => {
-    spawnEnemy();
-  }, []);
 
   /* 🚶 PEATÓN */
   const pedX = useRef(new Animated.Value(-150)).current;
@@ -91,14 +93,15 @@ export default function Game() {
   };
 
   useEffect(() => {
+    spawnEnemy();
     spawnPedestrian();
   }, []);
 
   /* 💥 COLISIONES */
   useEffect(() => {
-    const listener = enemyY.addListener(({ value }) => {
+    const enemyListener = enemyY.addListener(({ value }) => {
       if (value > 350 && value < 450 && enemyLane === lane) {
-        router.push("/result?success=false&stars=0");
+        handleFail();
       }
     });
 
@@ -111,15 +114,60 @@ export default function Game() {
         pedY > 350 &&
         pedY < 450
       ) {
-        router.push("/result?success=false&stars=0");
+        handleFail();
       }
     });
 
     return () => {
-      enemyY.removeListener(listener);
+      enemyY.removeListener(enemyListener);
       pedX.removeListener(pedListener);
     };
   }, [lane, enemyLane, pedY]);
+
+  /* 🛣️ CARRETERA */
+  const roadAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(roadAnim, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, []);
+
+  const translateY = roadAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 300],
+  });
+
+  /* ✅ WIN */
+  const handleWin = () => {
+    const stars = calculateStars();
+
+    router.push({
+      pathname: "/result",
+      params: {
+        success: "true",
+        stars: String(stars),
+        level: String(levelId),
+      },
+    });
+  };
+
+  /* ❌ FAIL */
+  const handleFail = () => {
+    router.push({
+      pathname: "/result",
+      params: {
+        success: "false",
+        stars: "0",
+        level: String(levelId),
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -183,11 +231,17 @@ export default function Game() {
           <Text style={styles.btnText}>▶</Text>
         </TouchableOpacity>
       </View>
+
+      {/* DEBUG BOTÓN GANAR */}
+      <TouchableOpacity style={styles.winBtn} onPress={handleWin}>
+        <Text style={{ color: "#fff" }}>WIN</Text>
+      </TouchableOpacity>
+
     </View>
   );
 }
 
-/* 🎨 ESTILOS */
+/* 🎨 */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -241,5 +295,12 @@ const styles = StyleSheet.create({
   btnText: {
     color: "#fff",
     fontSize: 18,
+  },
+
+  winBtn: {
+    position: "absolute",
+    top: 50,
+    backgroundColor: "green",
+    padding: 10,
   },
 });
